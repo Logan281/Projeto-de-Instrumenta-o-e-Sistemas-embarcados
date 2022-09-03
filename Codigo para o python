@@ -1,1 +1,110 @@
 
+CODIGO PYTHON
+
+//Importa as bibliotecas
+import matplotlib.pyplot as plt
+import serial
+import funcoes
+
+
+# Cria um arquivo do tipo csv
+#arquivo = "logger.csv"
+
+# Abre o arquivo criado
+#file = open(arquivo, "a")
+
+# inicia a conexão com a porta serial com a chamada ao método serial.Serial()
+s = serial.Serial('COM7', 9600)
+
+# Usa o comando plt da biblioteca matplotlib para criar uma figura e mostra ela na tela
+plt.close('all')
+plt.figure()
+plt.ion()
+plt.show()
+
+#Cria vetores
+nivel = []
+vasao = []
+Temperatura = []
+erro = []
+nivelReferncia = []
+flagBomba = []
+i = 0
+
+while True:
+    a = s.readline()  # read a byte string  # decode byte string into Unicode
+    string = funcoes.TratamentoString(a)  # remove \n and \r
+
+    if string[0] == "@":
+        nivelReferncia.append((funcoes.Tratamento(string))) //utiliza funções para tratar os dados
+    if string[0] == "#":
+        nivel.append(funcoes.Tratamento(string)) //utiliza funções para tratar os dados
+    if string[0] == "*":
+        erro.append(funcoes.Tratamento(string)) //utiliza funções para tratar os dados
+    if string[0] == "!":
+        flagBomba.append((funcoes.Tratamento(string))) //utiliza funções para tratar os dados
+    if string[0] == "&":
+        vasao.append(funcoes.Tratamento(string)) //utiliza funções para tratar os dados
+    if string[0] == "$":
+        Temperatura.append((funcoes.Tratamento(string))) //utiliza funções para tratar os dados
+
+    # Utiliza a biblioteca matplotlib para editar a figura anterioremente criada e acrescentar todos os novos dados que surgirem
+    plt.cla()
+    plt.subplot(2, 2, 1)
+    plt.title('Análise gráfica - Sensor de nivel')
+    plt.grid(True)
+    plt.xlabel('Tempo [s] ')
+    plt.ylabel(' Nivel [cm] e Nivel Filtrado ')
+    plt.text(0, 14, "Nivel da bomba - [Preto]")
+    plt.plot(nivel, color="k")
+
+    plt.subplot(2, 2, 1)
+    plt.grid(True)
+    plt.text(0, 13, "Nivel de referencia - [Verde]")
+    plt.plot(nivelReferncia, color="g")
+
+    plt.subplot(2, 2, 2)
+    plt.title('Análise gráfica - Sensor de vasão')
+    plt.grid(True)
+    plt.xlabel(' Tempo [s]')
+    plt.ylabel(' Vasão [L/min]')
+    plt.plot(vasao, color="b")
+
+    plt.subplot(2, 2, 3)
+    plt.title('Análise gráfica - Sensor de temperatura')
+    plt.grid(True)
+    plt.xlabel(' Tempo [s]')
+    plt.ylabel(' Temperatura [C°]')
+    plt.plot(Temperatura, color="r")
+
+    plt.subplot(2, 2, 4)
+    plt.title('Análise gráfica - Erro')
+    plt.grid(True)
+    plt.xlabel(' Tempo [s]')
+    plt.ylabel(' Erro [cm]')
+    plt.text(0, 1.3, "Erro  - [Amarelo]")
+    plt.plot(erro, color="y")
+
+    plt.subplot(2, 2, 4)
+    plt.grid(True)
+    plt.text(0, 1.2, "Sinal do motor - [Magenta]")
+    plt.plot(flagBomba, color="m")
+
+    plt.pause(0.01)
+    i += 1
+
+# Encerra a conexão com a porta Serial
+s.close()
+
+
+//Define as funções
+
+def Tratamento(string):
+    string = string[1:len(string)]
+    b = float(string[0:4])  # Converte os valores lidos para float
+    return b
+def TratamentoString(a):
+    string_n = a.decode('utf-8').strip()
+    string = string_n.rstrip()
+    return string
+
