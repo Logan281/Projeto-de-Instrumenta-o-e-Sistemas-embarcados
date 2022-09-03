@@ -1,1 +1,200 @@
+CODIGO NO IDE ARDUINO
 
+//Importa as bibliotecas
+#include <Ultrasonic.h>
+#include <LiquidCrystal.h>
+#include "max6675.h"
+
+//Define os pinos para o sensor de nivel
+#define pino_trigger 4
+#define pino_echo 5
+
+//Cria o objeto do ultrasonic e seta os pinos digitais
+Ultrasonic ultrasonic(pino_trigger, pino_echo);
+
+//Define o pino para o sensor de vasão
+int flowPin = 2;    //Este é o pino de entrada no Arduino
+double flowRate;    //Este é o valor que pretende-se calcular
+volatile int count; //Este número precisa ser setado como volátil para garantir que ele seja atualizado corretamente durante o processo de interrupção
+
+//Define os leds para a ponte H
+const int led1 = 13 ;
+const int led2 = 12;// o led esta ligado ao pino 09
+const int button = 3;   // o botao esta ligado ao pino 02
+ 
+
+boolean lastButton = LOW;     // variavel que guarda o ultimo estado do botao (até porque comecamos com o botao sempre em LOW via resistor PULL-DOWN)
+boolean currentButton = LOW;    // variavel contendo o atual estado do botao (e ainda utilizamos aqui um resistor pull-down)
+boolean ledOn = false;      // o atual estado do led (on/off) (o led começa em OFF porque o button começa em LOW) PS: (FALSE = LOW = 0)
+
+//Define os pinos para o sensor de temperatura
+int thermoDO = 6;
+int thermoCS = 7;
+int thermoCLK =8;
+ 
+//Cria o objeto do Termopar e seta os Pinos Digitais
+MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
+ 
+ 
+//Numero de amostras
+int amostragem = 10;
+
+//Definição de variaveis
+float nivel = 0;
+
+float y = 0;
+
+float erro = 0;
+
+int flagBomba = 0;
+
+void setup()
+{
+  pinMode(led1, OUTPUT);     // configura o pino do led1 como saida
+  pinMode(button, INPUT);   // configura o pino do botao como entrada (não é obrigatório pois por padrão os pinos são configurados como ENTRADA)
+  pinMode(led2, OUTPUT);    // configura o pino do led2 como saida
+
+  pinMode(flowPin, INPUT); //Seta o pino de entrada
+  attachInterrupt(0, Flow, RISING);  //Configura o interruptor 0 (pino 2 no Arduino Uno) para rodar a função "Flow"
+  Serial.begin(9600);
+
+}
+//função para lidar com o debounce do botão
+boolean debounce(boolean last)
+  {
+    boolean current = digitalRead(button);      // le o estado atual do botao
+    
+    if(last != current)
+    {
+      delay(3);     // espera 3ms --> AQUI VAI O "SEGREDO" DO "EFETIVO E SEGURO, ALÉM DE RÁPIDO DEBOUNCING"
+      current = digitalRead(button);      // le NOVAMENTE o estado do botao apos o "debounce"  
+    }
+    return current;     // retorna o valor atualizado do botao (button)
+  }
+void loop ()
+{ 
+  
+  float f = 2.5; 
+  float omega = 2*3.14*f;
+  float delta = 0.01;
+  
+  digitalWrite(led1, HIGH); //Led 1 da pinte H liga
+
+  //SensorDistancia();
+
+  nivel  = SensorDistancia(); // recebe o nivel do sensor de distancia atraves da função SensorDistancia
+  y = delta*omega*(nivel-y)+y; // Filtra o dado recebido na variavel nivel
+
+  //printa na serial o nivel filtrado com o marcador #
+  Serial.print("#");
+  Serial.println(y);
+  
+  //Chama a funçãp SensorVasao
+  SensorVasao();
+
+  //Chama a funçãp SensorTemperatura
+  SensorTemperatura();
+  
+  float  NivelReferencia  = 15; //Define o nivel de referencia
+  
+  erro = NivelReferencia - nivel; // Calcula o erro
+  
+  if(erro < 2){
+    //Liga a bomba
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, LOW); 
+    flagBomba = 1;
+  }else if(erro > -2){
+    //Desliga a bomba
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, HIGH); 
+    flagBomba = 0;
+  }
+  //printa na serial o erro com o marcador *
+  Serial.print("*");
+  Serial.println(erro);
+  //printa na serial o estado do motor com o marcador !
+  Serial.print("!");
+  Serial.println(flagBomba);
+  //printa na serial o nivel de referencia com o marcador @
+  Serial.print("@");
+  Serial.println(NivelReferencia);
+  
+  currentButton = debounce(lastButton); 
+  // Lê o estado do botao após o debounce
+  // aqui passamos pela FUNÇÃO "debounce"
+  // ANTES de podermos OBTER o VALOR FINAL
+ // do ATUAL ESTADO DO BOTÃO! 
+ 
+
+ delay(1000);
+}
+//Define a função que encontra o nivel
+float SensorDistancia(){
+  float cmMsec;
+  long microsec = ultrasonic.timing();
+  cmMsec = ultrasonic.convert(microsec, Ultrasonic::CM);
+  //Exibe informacoes no serial monitor
+  //Serial.print("#");
+  //Serial.print(cmMsec);
+  //Serial.print(",");
+  return cmMsec;
+}
+//Define a função que encontra a vasão
+void SensorVasao(){
+  count = 0;      // Reseta o contador para iniciarmos a contagem em 0 novamente
+  interrupts();   //Habilita o interrupção no Arduino
+  delay (1000);   //Espera 1 segundo
+  noInterrupts(); //Desabilita o interrupção no Arduino
+   
+  //Cálculos matemáticos
+  flowRate = (count * 2.25);        //Conta os pulsos no último segundo e multiplica por 2,25mL, que é a vazão de cada pulso
+  flowRate = flowRate * 60;         //Converte segundos em minutos, tornando a unidade de medida mL/min
+  flowRate = flowRate / 1000;       //Converte mL em litros, tornando a unidade de medida L/min
+
+  Serial.print("&");
+  Serial.println(flowRate); 
+ // lcd_1.setCursor(0,2);
+ // lcd_1.print(flowRate);
+}
+//Define a função que encontra a temperatura
+void SensorTemperatura(){
+   //Variavel que recebera os dados de leitura
+   float temperatura = 0;
+   
+   //Inicia a leituira das amostra
+   for(int index =0; index < amostragem; index++){
+     temperatura = thermocouple.readCelsius() + temperatura;
+     delay(200);
+   }
+   
+   //Tira a media das leituras
+   temperatura = temperatura / amostragem;
+   
+   //Imprime na Serial  a temperatura com o marcador $
+   Serial.print("$ "); 
+   Serial.println(temperatura);
+}
+//Define a função controle do motor por botão
+void ControleMotor(){
+   currentButton = debounce(lastButton); 
+  // Lê o estado do botao após o debounce
+  // aqui passamos pela FUNÇÃO "debounce"
+  // ANTES de podermos OBTER o VALOR FINAL
+ // do ATUAL ESTADO DO BOTÃO! (R.Costa.)
+ 
+   if(lastButton == LOW && currentButton == HIGH)      // se o botao foi PRESSIONADO
+    {
+      
+      ledOn = !ledOn;     // alternamos o valor do LED
+    }
+    
+    lastButton = currentButton;     // redefinimos o valor do botao
+ 
+    digitalWrite(led2, ledOn);     // alternamos o estado do led
+}
+
+void Flow()
+{
+   count++; //Quando essa função é chamada, soma-se 1 a variável "count" 
+}
